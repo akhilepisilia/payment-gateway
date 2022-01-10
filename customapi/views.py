@@ -63,8 +63,6 @@ def update_user_subscription_details(user_uuid):
     pretty_json = json.loads(response.text)
 
     data.status = pretty_json['subscription']['status']
-    data.addedon = pretty_json['subscription']['addedOn']
-    data.authLink = pretty_json['subscription']['authLink']
     data.currentCycle = pretty_json['subscription']['currentCycle']
     data.save()
     print("updated user sub details")
@@ -306,7 +304,6 @@ def update_subscription_payment_details(user_uuid, paymentId):
     paymentdata.paymentstatus = pretty_json['payment']['status']
     paymentdata.retryAttempts = pretty_json['payment']['retryAttempts']
     paymentdata.save()
-    return JsonResponse(pretty_json, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -333,7 +330,7 @@ def get_user_subscription_payment(request, user_uuid):
             }
             resData.append(paymentData)
     print(resData)
-    return JsonResponse(resData, status=status.HTTP_200_OK, safe=False)
+    return JsonResponse({"status": "OK", "payments": resData}, status=status.HTTP_200_OK, safe=False)
 
 
 @api_view(['POST'])
@@ -361,7 +358,14 @@ def cancel_user_subscription(request, user_uuid):
 
     update_user_subscription_details(user_uuid)
     data.delete()
-    return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+    if(response.status_code == 200):
+        return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+    elif(response.status_code == 400):
+        return JsonResponse(pretty_json, status=status.HTTP_400_BAD_REQUEST)
+    elif(response.status_code == 404):
+        return JsonResponse(pretty_json, status=status.HTTP_404_NOT_FOUND)
+    else:
+        return JsonResponse(pretty_json)
 
 
 @api_view(['POST'])
@@ -389,7 +393,15 @@ def cancel_charge_subscription(request, user_uuid, paymentId):
     pretty_json = json.loads(response.text)
     print(pretty_json)
     update_user_subscription_details(user_uuid)
-    return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+
+    if(response.status_code == 200):
+        return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+    elif(response.status_code == 400):
+        return JsonResponse(pretty_json, status=status.HTTP_400_BAD_REQUEST)
+    elif(response.status_code == 404):
+        return JsonResponse(pretty_json, status=status.HTTP_404_NOT_FOUND)
+    else:
+        return JsonResponse(pretty_json)
 
 
 @api_view(['POST'])
