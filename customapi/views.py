@@ -390,3 +390,38 @@ def cancel_charge_subscription(request, user_uuid, paymentId):
     print(pretty_json)
     update_user_subscription_details(user_uuid)
     return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+def Retry_charge(request, user_uuid):
+    global cashfreeTestAPI
+
+    if isUserSubscribed(user_uuid):
+        return JsonResponse({'error': "the user does not have any subscription"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    url = cashfreeTestAPI+"api/v2/subscriptions/" + \
+        data.subReferenceId+"/charge-retry"
+
+    clientinfo = clientInfo.objects.all()
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "x-client-id": clientinfo[0].clientId,
+        "x-client-secret": clientinfo[0].clientSecret,
+        "x-api-version": "2021-05-21"
+    }
+
+    response = requests.request("POST", url, headers=headers)
+    pretty_json = json.loads(response.text)
+    print(pretty_json)
+    update_user_subscription_details(user_uuid)
+    if(response.status_code == 200):
+        return JsonResponse(pretty_json, status=status.HTTP_200_OK)
+    elif(response.status_code == 400):
+        return JsonResponse(pretty_json, status=status.HTTP_400_BAD_REQUEST)
+    elif(response.status_code == 404):
+        return JsonResponse(pretty_json, status=status.HTTP_404_NOT_FOUND)
+    else:
+        return JsonResponse(pretty_json)
