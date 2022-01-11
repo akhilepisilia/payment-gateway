@@ -11,6 +11,8 @@ urlpatterns = [
 
     path("v1/subscription/user/<str:user_uuid>",
          views.get_user_subscription_details, name="get_user_subscription_details"),
+    path("v1/subscription/user/<str:user_uuid>/all",
+         views.get_user_all_subscription_details, name="get_user_all_subscription_details"),
 
     path("v1/subscription/payment/user/<str:user_uuid>",
          views.get_user_subscription_payment, name="get_user_subscription_payment"),

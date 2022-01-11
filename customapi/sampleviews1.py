@@ -17,7 +17,7 @@ cashfreeTestAPI = "https://test.cashfree.com/"
 
 
 def isUserSubscribed(user_uuid):
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    data = SubscriptionData.objects.filter(user_uuid=user_uuid)
     if not data:
         return True
 

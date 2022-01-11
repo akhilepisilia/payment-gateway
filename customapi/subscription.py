@@ -19,23 +19,33 @@ cashfreeTestAPI = "https://test.cashfree.com/"
 # each uuid should have only one subscription only or one should be compleated or canceled  safe=False
 
 #not using
-def check_user_subscription_more_than_one(user_uuid):
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+def check_active_subscription(user_uuid):
     flag = 0
     for obj in SubscriptionData.objects.values():
         if (obj['user_uuid_id'] == user_uuid):
             if (obj['status'] == 'INITIALIZED' or obj['status'] == 'ACTIVE' or obj['status'] == 'BANK_APPROVAL_PENDING' or obj['status'] == 'ON_HOLD'):
                 flag = flag+1
-    if flag > 0:
+    if flag > 0 and flag == 1:
         return True
     else:
         return False
 
 
+def getcurrentsubscriptionID(user_uuid):
+    data = SubscriptionData.objects.filter(user_uuid=user_uuid)
+    for obj in data:
+        if (obj.status == 'INITIALIZED' or obj.status == 'ACTIVE' or obj.status == 'BANK_APPROVAL_PENDING' or obj.status == 'ON_HOLD'):
+            return obj.subscriptionId
+
+    return False
+
+
 def update_user_subscription_details(user_uuid):
 
     global cashfreeTestAPI
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId
 
@@ -62,8 +72,9 @@ def update_user_subscription_details(user_uuid):
 def getSubscription(user_uuid):
 
     update_user_subscription_details(user_uuid)
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     subscriptiondata = {
         "subscriptionId":   data.subscriptionId,
@@ -75,8 +86,29 @@ def getSubscription(user_uuid):
         "authLink": data.authLink,
         "currentCycle": data.currentCycle
     }
-
+    print(getcurrentsubscriptionID(user_uuid))
     return subscriptiondata
+
+
+def getAllSubscription(user_uuid):
+
+    update_user_subscription_details(user_uuid)
+    data = SubscriptionData.objects.filter(user_uuid=user_uuid)
+    resdata = []
+    for obj in data:
+        subscriptiondata = {
+            "subscriptionId":   obj.subscriptionId,
+            "subReferenceId": obj.subReferenceId,
+            "planId":    obj.planId,
+            "status":   obj.status,
+            "addedon": obj.addedon,
+            "expiresOn":  obj.expiresOn,
+            "authLink": obj.authLink,
+            "currentCycle": obj.currentCycle
+        }
+        resdata.append(subscriptiondata)
+
+    return resdata
 
 
 def createsubscription(user_uuid, subscriptionId, planId):
@@ -143,8 +175,9 @@ def createsubscription(user_uuid, subscriptionId, planId):
 def chargesubscription(user_uuid, amount, scheduledOn):
 
     global cashfreeTestAPI
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId+"/charge"
 
@@ -187,11 +220,14 @@ def chargesubscription(user_uuid, amount, scheduledOn):
     else:
         return pretty_json
 
+# def check_subscription_payment_details(user_uuid)
+
 
 def update_subscription_payment_details(user_uuid, paymentId):
     global cashfreeTestAPI
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
     paymentdata = PaymentData.objects.get(paymentId=paymentId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/" + \
@@ -215,7 +251,9 @@ def update_subscription_payment_details(user_uuid, paymentId):
 
 def getsubscriptionpayment(user_uuid):
     #paymentdata = [obj for obj in PaymentData.objects.values()]
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
     matchUser = PaymentData.objects.filter(subReferenceId=data.subReferenceId)
     if not matchUser:
         return []
@@ -240,8 +278,9 @@ def getsubscriptionpayment(user_uuid):
 
 def cancelsubscription(user_uuid):
     global cashfreeTestAPI
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
     url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId+"/cancel"
 
     clientinfo = clientInfo.objects.all()
@@ -257,13 +296,7 @@ def cancelsubscription(user_uuid):
     pretty_json = json.loads(response.text)
     if(response.status_code == 200):
         update_user_subscription_details(user_uuid)
-        try:
-            data.delete()
-            return True
-        except Exception as e:
-            print(e)
-            return False
-
+        return True
     else:
         return pretty_json
 
@@ -271,8 +304,9 @@ def cancelsubscription(user_uuid):
 def cancelcharge(user_uuid, paymentId):
 
     global cashfreeTestAPI
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscription/" + \
         data.subReferenceId+"/charge/"+paymentId+"/cancel"
@@ -299,8 +333,9 @@ def cancelcharge(user_uuid, paymentId):
 def retrycharge(user_uuid):
 
     global cashfreeTestAPI
-
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/" + \
         data.subReferenceId+"/charge-retry"

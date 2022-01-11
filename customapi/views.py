@@ -28,8 +28,44 @@ def isUserThere(user_uuid):
         return True
 
 
+def check_active_subscription(user_uuid):
+    flag = 0
+    for obj in SubscriptionData.objects.values():
+        if (obj['user_uuid_id'] == user_uuid):
+            if (obj['status'] == 'INITIALIZED' or obj['status'] == 'ACTIVE' or obj['status'] == 'BANK_APPROVAL_PENDING' or obj['status'] == 'ON_HOLD'):
+                flag = flag+1
+    if flag > 0 and flag == 1:
+        return True
+    else:
+        return False
+
+
+def getcurrentsubscriptionID(user_uuid):
+    data = SubscriptionData.objects.filter(user_uuid=user_uuid)
+    for obj in data:
+        if (obj.status == 'INITIALIZED' or obj.status == 'ACTIVE' or obj.status == 'BANK_APPROVAL_PENDING' or obj.status == 'ON_HOLD'):
+            return obj.subscriptionId
+
+    return False
+
+
 @api_view(['GET'])
 def get_user_subscription_details(request, user_uuid):
+
+    if isUserThere(user_uuid):
+        return JsonResponse({'error': "incorrect user ID  " + user_uuid},
+                            status=status.HTTP_400_BAD_REQUEST)
+    if not check_active_subscription(user_uuid):
+        return JsonResponse({'error': "the user does not have any subscription"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    res = subscription.getSubscription(user_uuid)
+
+    return JsonResponse(res, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def get_user_all_subscription_details(request, user_uuid):
 
     if isUserThere(user_uuid):
         return JsonResponse({'error': "incorrect user ID  " + user_uuid},
@@ -38,9 +74,9 @@ def get_user_subscription_details(request, user_uuid):
         return JsonResponse({'error': "the user does not have any subscription"},
                             status=status.HTTP_400_BAD_REQUEST)
 
-    res = subscription.getSubscription(user_uuid)
+    res = subscription.getAllSubscription(user_uuid)
 
-    return JsonResponse(res, status=status.HTTP_200_OK)
+    return JsonResponse({"status": "OK", 'subscriptions': res}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -53,7 +89,8 @@ def create_user_subscription(request, user_uuid):
         return JsonResponse({'error': "incorrect user ID "+user_uuid}, status=status.HTTP_400_BAD_REQUEST)
 
     if SubscriptionData.objects.filter(user_uuid=user_uuid).exists():
-        return JsonResponse({'error': "This user already has subscription"}, status=status.HTTP_400_BAD_REQUEST)
+        if subscription.check_active_subscription(user_uuid):
+            return JsonResponse({'error': "This user already has subscription"}, status=status.HTTP_400_BAD_REQUEST)
 
     res = matchUser[0]
     if res.name == '-':
@@ -67,7 +104,9 @@ def create_user_subscription(request, user_uuid):
         user_uuid,  body['subscriptionId'], body['planId'])
     print(result)
     if (result == True):
-        data = SubscriptionData.objects.get(user_uuid=user_uuid)
+        subscriptionId = getcurrentsubscriptionID(user_uuid)
+        data = SubscriptionData.objects.get(
+            user_uuid=user_uuid, subscriptionId=subscriptionId)
         createsubscriptionResponse = {
             'status': 'OK',
             'subscription': {
@@ -169,7 +208,9 @@ def cancel_charge_subscription(request, user_uuid, paymentId):
                             status=status.HTTP_400_BAD_REQUEST)
 
     # check if user has payment
-    data = SubscriptionData.objects.get(user_uuid=user_uuid)
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
     if PaymentData.objects.filter(subReferenceId=data.subReferenceId, paymentId=paymentId).exists():
         return JsonResponse({'error': "Did not find any payment under the user"}, status=status.HTTP_400_BAD_REQUEST)
 
