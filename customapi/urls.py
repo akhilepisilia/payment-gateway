@@ -16,6 +16,8 @@ urlpatterns = [
 
     path("v1/subscription/payment/user/<str:user_uuid>",
          views.get_user_subscription_payment, name="get_user_subscription_payment"),
+    path("v1/subscription/payment/user/<str:user_uuid>/all",
+         views.get_users_all_subscription_payment, name="get_users_all_subscription_payment"),
 
     path("v1/subscription/charge/user/<str:user_uuid>/retry",
          views.Retry_charge, name="Retry_charge"),

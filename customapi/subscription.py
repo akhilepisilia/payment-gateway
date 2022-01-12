@@ -1,3 +1,4 @@
+from django.db import reset_queries
 from django.http.response import HttpResponse
 from django.shortcuts import render
 from rest_framework.views import APIView
@@ -18,7 +19,7 @@ cashfreeTestAPI = "https://test.cashfree.com/"
 
 # each uuid should have only one subscription only or one should be compleated or canceled  safe=False
 
-#not using
+# used to check for if user has an active subscription
 def check_active_subscription(user_uuid):
     flag = 0
     for obj in SubscriptionData.objects.values():
@@ -31,6 +32,7 @@ def check_active_subscription(user_uuid):
         return False
 
 
+# used to get subscription_id  if user has an active subscription
 def getcurrentsubscriptionID(user_uuid):
     data = SubscriptionData.objects.filter(user_uuid=user_uuid)
     for obj in data:
@@ -38,6 +40,18 @@ def getcurrentsubscriptionID(user_uuid):
             return obj.subscriptionId
 
     return False
+
+
+# used to get all the subReferenceId  for the user
+def getallsubReferenceId(user_uuid):
+    data = SubscriptionData.objects.filter(user_uuid=user_uuid)
+    res = []
+    for obj in data:
+        res.append(obj.subReferenceId)
+
+    return res
+
+# update user subscription details if user has a active subscription
 
 
 def update_user_subscription_details(user_uuid):
@@ -68,9 +82,16 @@ def update_user_subscription_details(user_uuid):
     else:
         return False
 
+# used to make a subscriptionId
 
+
+def genSubscriptionId():
+    count = SubscriptionData.objects.all().count()
+    return count + 1001
+
+
+#  used to get activeg user_subscription_details from DB
 def getSubscription(user_uuid):
-
     update_user_subscription_details(user_uuid)
     subscriptionId = getcurrentsubscriptionID(user_uuid)
     data = SubscriptionData.objects.get(
@@ -86,10 +107,11 @@ def getSubscription(user_uuid):
         "authLink": data.authLink,
         "currentCycle": data.currentCycle
     }
-    print(getcurrentsubscriptionID(user_uuid))
+
     return subscriptiondata
 
 
+#  used for getting all user subscription details from DB
 def getAllSubscription(user_uuid):
 
     update_user_subscription_details(user_uuid)
@@ -110,8 +132,10 @@ def getAllSubscription(user_uuid):
 
     return resdata
 
+# used to create subscription if user does not have any active subscription
 
-def createsubscription(user_uuid, subscriptionId, planId):
+
+def createsubscription(user_uuid, planId):
 
     global cashfreeTestAPI
     # SubscriptionData.objects.filter(user_uuid=user_uuid).exists()
@@ -119,7 +143,7 @@ def createsubscription(user_uuid, subscriptionId, planId):
     res = matchUser[0]
 
     url = cashfreeTestAPI + "api/v2/subscriptions"
-
+    subscriptionId = genSubscriptionId()
     expiresOn = (datetime.now()+timedelta(days=730)
                  ).strftime("%Y-%m-%d %H:%M:%S")
     addedon = (datetime.now()+timedelta(days=0)).strftime("%Y-%m-%d %H:%M:%S")
@@ -132,7 +156,8 @@ def createsubscription(user_uuid, subscriptionId, planId):
         "expiresOn": expiresOn,
         "returnUrl":   "https://www.episilia.com/",
         "subscriptionNote": "for api testing",
-        "authAmount": 1
+        "authAmount": 1,
+        "notificationChannels": ["EMAIL", "SMS"]
     }
 
     clientinfo = clientInfo.objects.all()
@@ -169,9 +194,8 @@ def createsubscription(user_uuid, subscriptionId, planId):
     else:
         return pretty_json
 
-# we need to inisate it
 
-
+# used to charge subscription if user has an active subscription
 def chargesubscription(user_uuid, amount, scheduledOn):
 
     global cashfreeTestAPI
@@ -220,7 +244,7 @@ def chargesubscription(user_uuid, amount, scheduledOn):
     else:
         return pretty_json
 
-# def check_subscription_payment_details(user_uuid)
+#  used to update subscription payment details
 
 
 def update_subscription_payment_details(user_uuid, paymentId):
@@ -248,6 +272,21 @@ def update_subscription_payment_details(user_uuid, paymentId):
     paymentdata.retryAttempts = pretty_json['payment']['retryAttempts']
     paymentdata.save()
 
+# used to update all subscriptions payments details under user will skip if payment status = CANCELLED
+
+
+def update_all_subscription_payment_details(user_uuid):
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
+    for obj in PaymentData.objects.values():
+        if (obj['subReferenceId_id'] == data.subReferenceId):
+            if (not obj['paymentstatus'] == 'CANCELLED'):
+                update_subscription_payment_details(
+                    user_uuid, obj['paymentId'])
+
+# used to get  all  payment details  under active subscription
+
 
 def getsubscriptionpayment(user_uuid):
     #paymentdata = [obj for obj in PaymentData.objects.values()]
@@ -259,9 +298,10 @@ def getsubscriptionpayment(user_uuid):
         return []
 
     resData = []
+    update_all_subscription_payment_details(user_uuid)
     for obj in PaymentData.objects.values():
         if (obj['subReferenceId_id'] == data.subReferenceId):
-            update_subscription_payment_details(user_uuid, obj['paymentId'])
+            print(obj)
             paymentData = {
                 'subReferenceId': obj['subReferenceId_id'],
                 'paymentId': obj['paymentId'],
@@ -272,8 +312,50 @@ def getsubscriptionpayment(user_uuid):
                 'retryAttempts': obj['retryAttempts']
             }
             resData.append(paymentData)
-    print(resData)
     return resData
+
+# used to get  all  payment details  under all the  subscriptions user has
+
+
+def getallsubscriptionpayment(user_uuid):
+    #paymentdata = [obj for obj in PaymentData.objects.values()]
+    subReferenceId = getallsubReferenceId(user_uuid)
+
+    resData = []
+    for subRefId in subReferenceId:
+        data = SubscriptionData.objects.get(
+            user_uuid=user_uuid, subReferenceId=subRefId)
+        res = []
+        for obj in PaymentData.objects.values():
+            if (obj['subReferenceId_id'] == data.subReferenceId):
+                if (not obj['paymentstatus'] == 'CANCELLED'):
+                    update_subscription_payment_details(
+                        user_uuid, obj['paymentId'])
+                paymentData = {
+                    'subReferenceId': obj['subReferenceId_id'],
+                    'paymentId': obj['paymentId'],
+                    'scheduledOn': obj['scheduledOn'],
+                    'initiatedOn': obj['initiatedOn'],
+                    'amount': obj['amount'],
+                    'paymentstatus': obj['paymentstatus'],
+                    'retryAttempts': obj['retryAttempts']
+                }
+                res.append(paymentData)
+
+        subscriptiondata = {
+            'subscriptionId': data.subscriptionId,
+            'subReferenceId': data.subReferenceId,
+            'planId': data.planId,
+            'addedon': data.addedon,
+            "expiresOn": data.expiresOn,
+            "status": data.status,
+            'payment': res
+        }
+        resData.append(subscriptiondata)
+
+    return resData
+
+# used to cancel subscription if user has an active subscription
 
 
 def cancelsubscription(user_uuid):
@@ -300,6 +382,8 @@ def cancelsubscription(user_uuid):
     else:
         return pretty_json
 
+# used to cancel charge for subscription if user has an active subscription
+
 
 def cancelcharge(user_uuid, paymentId):
 
@@ -322,12 +406,13 @@ def cancelcharge(user_uuid, paymentId):
 
     response = requests.request("POST", url, headers=headers)
     pretty_json = json.loads(response.text)
-
     if(response.status_code == 200):
         update_user_subscription_details(user_uuid)
         return True
     else:
         return pretty_json
+
+# used to retry charge for subscription if user has an active subscription and if charge does not proceed
 
 
 def retrycharge(user_uuid):
