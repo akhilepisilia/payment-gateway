@@ -28,5 +28,7 @@ urlpatterns = [
     path("v1/subscription/user/<str:user_uuid>/cancel",
          views.cancel_user_subscription, name="cancel_user_subscription"),
 
+    path("v1/subscription/user/<str:user_uuid>/genSubscriptionId",
+         views.gen_SubscriptionId, name="gen_SubscriptionId"),
 
 ]

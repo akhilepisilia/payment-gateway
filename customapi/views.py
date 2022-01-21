@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
 import customapi.subscription as subscription
-from .models import SubscriptionData, PaymentData, User, clientInfo
+from .models import SubscriptionData, PaymentData, User
 import json
 import requests
 from django.http import JsonResponse
@@ -20,12 +20,14 @@ def isUserSubscribed(user_uuid):
     data = SubscriptionData.objects.filter(user_uuid=user_uuid)
     if not data:
         return True
+    return False
 
 
 def isUserThere(user_uuid):
     matchUser = User.objects.filter(user_uuid=user_uuid)
     if not matchUser:
         return True
+    return False
 
 
 def check_active_subscription(user_uuid):
@@ -56,12 +58,18 @@ def get_user_subscription_details(request, user_uuid):
         return JsonResponse({'error': "Incorrect user ID  " + user_uuid},
                             status=status.HTTP_400_BAD_REQUEST)
     if not check_active_subscription(user_uuid):
-        return JsonResponse({'error': "The user does not have any subscription"},
+        return JsonResponse({'error': "The user does not have any active subscription"},
                             status=status.HTTP_400_BAD_REQUEST)
 
     res = subscription.getSubscription(user_uuid)
-
+    check_current_subscription_payment_status(user_uuid)
     return JsonResponse(res, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def gen_SubscriptionId(request, user_uuid):
+    res = subscription.genSubscriptionId(user_uuid)
+    return JsonResponse({'result': res}, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -94,15 +102,15 @@ def create_user_subscription(request, user_uuid):
 
     res = matchUser[0]
     if res.name == '-':
-        return JsonResponse({'error': "Mame not found , Please update your details"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({'error': "Name not found , Please update your details"}, status=status.HTTP_400_BAD_REQUEST)
     if res.email_id == '-':
         return JsonResponse({'error': "Email not found , Please update your details"}, status=status.HTTP_400_BAD_REQUEST)
     if res.phone == '-':
         return JsonResponse({'error': "Phone no not found , Please update your details"}, status=status.HTTP_400_BAD_REQUEST)
 
     result = subscription.createsubscription(user_uuid, body['planId'])
-
-    if (result == True):
+    print(result)
+    if (result == "True"):
         subscriptionId = getcurrentsubscriptionID(user_uuid)
         data = SubscriptionData.objects.get(
             user_uuid=user_uuid, subscriptionId=subscriptionId)
@@ -193,6 +201,21 @@ def get_users_all_subscription_payment(request, user_uuid):
     return JsonResponse({"status": "OK", "subscriptions": result}, status=status.HTTP_200_OK, safe=False)
 
 
+# used to check id current subscription has pament status of PENDING  and INITIALIZED
+def check_current_subscription_payment_status(user_uuid):
+    subscriptionId = getcurrentsubscriptionID(user_uuid)
+    data = SubscriptionData.objects.get(
+        user_uuid=user_uuid, subscriptionId=subscriptionId)
+    flag = 0
+    for obj in PaymentData.objects.filter(subReferenceId=data.subReferenceId):
+        if (obj.paymentstatus == 'PENDING' and obj.paymentstatus == 'INITIALIZED'):
+            flag = flag+1
+    if flag == 0:
+        return False
+    else:
+        return True
+
+
 @api_view(['POST'])
 def cancel_user_subscription(request, user_uuid):
 
@@ -200,10 +223,13 @@ def cancel_user_subscription(request, user_uuid):
         return JsonResponse({'error': "Incorrect user ID  " + user_uuid},
                             status=status.HTTP_400_BAD_REQUEST)
 
-    if not isUserSubscribed(user_uuid):
-        return JsonResponse({'error': "The user does not have any active subscription to be cancelled"},
+    if not check_active_subscription(user_uuid):
+        return JsonResponse({'error': "The user does not have any active subscription"},
                             status=status.HTTP_400_BAD_REQUEST)
 
+    if check_current_subscription_payment_status(user_uuid):
+        return JsonResponse({'error': "The user cannot cancel an account if the payment is PENDING  or INITIALIZED "},
+                            status=status.HTTP_400_BAD_REQUEST)
     result = subscription.cancelsubscription(user_uuid)
 
     if(result == True):

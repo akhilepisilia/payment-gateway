@@ -1,16 +1,8 @@
-from django.db import reset_queries
-from django.http.response import HttpResponse
-from django.shortcuts import render
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.decorators import api_view
-
 from .models import SubscriptionData, PaymentData, User, clientInfo
 import json
 import requests
-from django.http import JsonResponse
 from datetime import datetime, timedelta
+import math
 # Create your views here.
 
 
@@ -61,7 +53,7 @@ def update_user_subscription_details(user_uuid):
     data = SubscriptionData.objects.get(
         user_uuid=user_uuid, subscriptionId=subscriptionId)
 
-    url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId
+    url = cashfreeTestAPI+"api/v2/subscriptions/"+str(data.subReferenceId)
 
     clientinfo = clientInfo.objects.all()
     headers = {
@@ -82,15 +74,33 @@ def update_user_subscription_details(user_uuid):
     else:
         return False
 
+
 # used to make a subscriptionId
+"""
+def genSubscriptionId(user_uuid, i=1):
+    count = SubscriptionData.objects.filter(user_uuid=user_uuid).count()
+    sub = User.objects.get(user_uuid=user_uuid)
+    if count != 0:
+        sub1 = SubscriptionData.objects.filter(
+            user_uuid=user_uuid).order_by('subscriptionId').last()
+        word = sub1.subscriptionId
+        li = word.split('_')
+        return sub.client_id + "_" + str(int(li[1])+i)
+    else:
+        return sub.client_id + "_" + str(i)
+"""
 
 
-def genSubscriptionId():
-    count = SubscriptionData.objects.all().count()
-    return count + 1001
-
+def genSubscriptionId(user_uuid):
+    sub = User.objects.get(user_uuid=user_uuid)
+    ct = datetime.now()
+    ts = ct.timestamp()
+    truncA = math.trunc(ts)
+    return sub.client_id + "_" + str(truncA)
 
 #  used to get activeg user_subscription_details from DB
+
+
 def getSubscription(user_uuid):
     update_user_subscription_details(user_uuid)
     subscriptionId = getcurrentsubscriptionID(user_uuid)
@@ -114,7 +124,6 @@ def getSubscription(user_uuid):
 #  used for getting all user subscription details from DB
 def getAllSubscription(user_uuid):
 
-    update_user_subscription_details(user_uuid)
     data = SubscriptionData.objects.filter(user_uuid=user_uuid)
     resdata = []
     for obj in data:
@@ -143,7 +152,10 @@ def createsubscription(user_uuid, planId):
     res = matchUser[0]
 
     url = cashfreeTestAPI + "api/v2/subscriptions"
-    subscriptionId = genSubscriptionId()
+
+    trunc = math.trunc(datetime.now().timestamp())
+    subscriptionId = res.client_id + "_" + str(trunc)
+
     expiresOn = (datetime.now()+timedelta(days=730)
                  ).strftime("%Y-%m-%d %H:%M:%S")
     addedon = (datetime.now()+timedelta(days=0)).strftime("%Y-%m-%d %H:%M:%S")
@@ -187,10 +199,15 @@ def createsubscription(user_uuid, planId):
         try:
             data.save()
             update_user_subscription_details(user_uuid)
-            return True
+            return "True"
         except Exception as e:
             print({'error': e})
             return False
+
+    elif(response.status_code == 400 and "Subscription already present for SubscriptionId" in pretty_json["message"]):
+
+        createsubscription(user_uuid, planId)
+
     else:
         return pretty_json
 
@@ -203,7 +220,8 @@ def chargesubscription(user_uuid, amount, scheduledOn):
     data = SubscriptionData.objects.get(
         user_uuid=user_uuid, subscriptionId=subscriptionId)
 
-    url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId+"/charge"
+    url = cashfreeTestAPI+"api/v2/subscriptions/" + \
+        str(data.subReferenceId)+"/charge"
 
     payload = {
         "amount": amount,
@@ -247,15 +265,13 @@ def chargesubscription(user_uuid, amount, scheduledOn):
 #  used to update subscription payment details
 
 
-def update_subscription_payment_details(user_uuid, paymentId):
+def update_subscription_payment_details(user_uuid, subReferenceId, paymentId):
     global cashfreeTestAPI
-    subscriptionId = getcurrentsubscriptionID(user_uuid)
-    data = SubscriptionData.objects.get(
-        user_uuid=user_uuid, subscriptionId=subscriptionId)
+    print(subReferenceId)
     paymentdata = PaymentData.objects.get(paymentId=paymentId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/" + \
-        data.subReferenceId + "/payments/"+str(paymentId)
+        str(subReferenceId) + "/payments/"+str(paymentId)
 
     clientinfo = clientInfo.objects.all()
     headers = {
@@ -283,7 +299,7 @@ def update_all_subscription_payment_details(user_uuid):
         if (obj['subReferenceId_id'] == data.subReferenceId):
             if (not obj['paymentstatus'] == 'CANCELLED'):
                 update_subscription_payment_details(
-                    user_uuid, obj['paymentId'])
+                    user_uuid, data.subReferenceId, obj['paymentId'])
 
 # used to get  all  payment details  under active subscription
 
@@ -325,12 +341,13 @@ def getallsubscriptionpayment(user_uuid):
     for subRefId in subReferenceId:
         data = SubscriptionData.objects.get(
             user_uuid=user_uuid, subReferenceId=subRefId)
+
         res = []
         for obj in PaymentData.objects.values():
             if (obj['subReferenceId_id'] == data.subReferenceId):
                 if (not obj['paymentstatus'] == 'CANCELLED'):
                     update_subscription_payment_details(
-                        user_uuid, obj['paymentId'])
+                        user_uuid, data.subReferenceId, obj['paymentId'])
                 paymentData = {
                     'subReferenceId': obj['subReferenceId_id'],
                     'paymentId': obj['paymentId'],
@@ -355,15 +372,15 @@ def getallsubscriptionpayment(user_uuid):
 
     return resData
 
+
 # used to cancel subscription if user has an active subscription
-
-
 def cancelsubscription(user_uuid):
     global cashfreeTestAPI
     subscriptionId = getcurrentsubscriptionID(user_uuid)
     data = SubscriptionData.objects.get(
         user_uuid=user_uuid, subscriptionId=subscriptionId)
-    url = cashfreeTestAPI+"api/v2/subscriptions/"+data.subReferenceId+"/cancel"
+    url = cashfreeTestAPI+"api/v2/subscriptions/" + \
+        str(data.subReferenceId)+"/cancel"
 
     clientinfo = clientInfo.objects.all()
     headers = {
@@ -393,7 +410,7 @@ def cancelcharge(user_uuid, paymentId):
         user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscription/" + \
-        data.subReferenceId+"/charge/"+paymentId+"/cancel"
+        str(data.subReferenceId)+"/charge/"+paymentId+"/cancel"
 
     clientinfo = clientInfo.objects.all()
     headers = {
@@ -423,7 +440,7 @@ def retrycharge(user_uuid):
         user_uuid=user_uuid, subscriptionId=subscriptionId)
 
     url = cashfreeTestAPI+"api/v2/subscriptions/" + \
-        data.subReferenceId+"/charge-retry"
+        str(data.subReferenceId)+"/charge-retry"
 
     clientinfo = clientInfo.objects.all()
     headers = {

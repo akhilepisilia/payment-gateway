@@ -5,10 +5,10 @@ from django.db import models
 
 class SubscriptionData(models.Model):
     user_uuid = models.ForeignKey('User', on_delete=models.CASCADE)
-    subscriptionId = models.CharField(max_length=10, unique=True)  # int
-    planId = models.CharField(max_length=10)  # int
+    subscriptionId = models.CharField(max_length=30, unique=True)
+    planId = models.CharField(max_length=20)
     expiresOn = models.CharField(max_length=40)
-    subReferenceId = models.CharField(max_length=10, primary_key=True)  # int
+    subReferenceId = models.IntegerField(primary_key=True)  # int
     status = models.CharField(max_length=20)
     addedon = models.CharField(max_length=50)
     authLink = models.CharField(max_length=40)
@@ -18,10 +18,10 @@ class SubscriptionData(models.Model):
 class PaymentData(models.Model):
     subReferenceId = models.ForeignKey(
         'SubscriptionData', on_delete=models.CASCADE)
-    paymentId = models.CharField(max_length=10)  # int
+    paymentId = models.IntegerField()  # int
     scheduledOn = models.CharField(max_length=40)
     initiatedOn = models.CharField(max_length=40)
-    amount = models.IntegerField()
+    amount = models.FloatField()
     paymentstatus = models.CharField(max_length=20)
     retryAttempts = models.IntegerField()
 
@@ -36,6 +36,7 @@ class User(models.Model):
     name = models.CharField(max_length=30)
     phone = models.CharField(max_length=15)
     user_uuid = models.CharField(max_length=50, unique=True, primary_key=True)
+    client_id = models.CharField(max_length=15, null=True)
 
     def __str__(self):
         return self.name
